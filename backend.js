@@ -20,13 +20,14 @@ const API_KEY = process.env.API_KEY || '67023380ece9a9561cac9b5f208907e0ab85063b
 const AIRTIME_API_URL = 'https://maskawasub.com/api/topup/';
 
 // Admin & Site State (In-Memory)
-const ADMIN_PIN = '223355';
+const ADMIN_PIN = '226688';
 const ADMIN_PHONE = process.env.ADMIN_PHONE || '09161041419';
 let siteState = {
 	isSiteOnline: true,
 	claimLimit: 52, // Default value from frontend logic
 	claimsToday: 0,
 };
+let transactionHistory = [];
 
 
 // 3. Apply Middleware
@@ -68,6 +69,11 @@ adminRouter.post('/state', (req, res) => {
     res.status(200).json({ success: true, state: siteState });
 });
 
+// Get transaction history
+adminRouter.post('/history', (req, res) => {
+    res.status(200).json({ success: true, history: transactionHistory });
+});
+
 // Toggle site ON/OFF
 adminRouter.post('/toggle-site', (req, res) => {
     siteState.isSiteOnline = !siteState.isSiteOnline;
@@ -107,6 +113,13 @@ adminRouter.post('/send-airtime', async (req, res) => {
         console.log(`[Admin Send] Attempting to send ₦100 airtime to ${mobile_number} on ${network}.`);
 		const apiResponse = await axios.post(AIRTIME_API_URL, apiPayload, { headers: apiHeaders });
         console.log(`[Admin Success] Airtime sent to ${mobile_number}. Provider Response:`, apiResponse.data);
+        
+        // Log to history
+        transactionHistory.unshift({
+            date: new Date().toISOString(),
+            network, mobile_number, amount: 100, status: 'Success (Admin)'
+        });
+
 		res.status(200).json({ success: true, message: `Admin send successful: ${apiResponse.data.message || 'Airtime request processed.'}`, data: apiResponse.data });
     } catch (error) {
         const statusCode = error.response ? error.response.status : 500;
@@ -152,7 +165,7 @@ app.post('/send-airtime', async (req, res) => {
 	const isAdminRequest = mobile_number === ADMIN_PHONE;
 	if (!isAdminRequest) {
 		if (!siteState.isSiteOnline) {
-			return res.status(503).json({ success: false, message: 'Airtime claims are temporarily disabled by the administrator.' });
+			return res.status(503).json({ success: false, message: 'Site is currently off. Try later.' });
 		}
 		if (siteState.claimsToday >= siteState.claimLimit) {
 			return res.status(429).json({ success: false, message: 'The daily airtime claim limit has been reached. Please try again later.' });
@@ -205,6 +218,12 @@ app.post('/send-airtime', async (req, res) => {
 			siteState.claimsToday++;
 			console.log(`[State] Claim count incremented. Total: ${siteState.claimsToday}/${siteState.claimLimit}`);
 		}
+
+        // Log to history
+        transactionHistory.unshift({
+            date: new Date().toISOString(),
+            network, mobile_number, amount: 100, status: 'Success'
+        });
 
 		// Respond to our client with the success message from the provider
 		res.status(200).json({
