@@ -66,6 +66,15 @@ adminRouter.use(verifyAdminPin);
 
 // Get current site state
 adminRouter.post('/state', (req, res) => {
+    // Calculate total amount dispensed today
+    const today = new Date().toISOString().split('T')[0];
+    const totalAmountToday = transactionHistory
+        .filter(tx => tx.date.startsWith(today) && (tx.status === 'Success' || tx.status === 'Success (Admin)'))
+        .reduce((sum, tx) => sum + tx.amount, 0);
+
+    // Add to siteState for frontend
+    siteState.totalAmountToday = totalAmountToday;
+
     res.status(200).json({ success: true, state: siteState });
 });
 
@@ -165,7 +174,7 @@ app.post('/send-airtime', async (req, res) => {
 	const isAdminRequest = mobile_number === ADMIN_PHONE;
 	if (!isAdminRequest) {
 		if (!siteState.isSiteOnline) {
-			return res.status(503).json({ success: false, message: 'Site is currently off. Try later.' });
+			return res.status(503).json({ success: false, message: 'Site is currently unavailable. Please try later.' });
 		}
 		if (siteState.claimsToday >= siteState.claimLimit) {
 			return res.status(429).json({ success: false, message: 'The daily airtime claim limit has been reached. Please try again later.' });
